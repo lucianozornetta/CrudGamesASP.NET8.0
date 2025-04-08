@@ -1,12 +1,16 @@
 ﻿using Proyecto.DTO;
 using Proyecto;
+using Proyecto.Data;
+using Proyecto.Entities;
+using Proyecto.Mapping;
+using Microsoft.EntityFrameworkCore;
 
 namespace Proyecto.Endpoints
 {
     public static class GamesEndpoints
     {
         const string GetGameEndpointName = "GetGame";
-        private static List<GameDTO> Games = [
+        private static List<GameSummaryDTO> Games = [
           new (
         1,
         "Street Fighter II",
@@ -34,14 +38,20 @@ namespace Proyecto.Endpoints
         {
             var group = app.MapGroup("/games");
 
-            group.MapGet("/", () => Games);
-
-            group.MapGet("/{id}", (int id) =>
+            group.MapGet("/", async (GameStoreContext dbContext) =>
             {
-                var game = Games.Find(game => game.Id == id);
+               return await dbContext.Games.Include(game => game.Genre).Select(game => game.ToSummaryDto()).AsNoTracking().ToListAsync();
+
+            });
+
+            group.MapGet("/{id}", async (int id , GameStoreContext dbContext) =>
+            {
+                GameEntity? game = await dbContext.Games.FindAsync(id);
+                
                 if (game != null)
                 {
-                    return Results.Ok(game);
+                    game.Genre = dbContext.Genres.Find(game.GenreId);
+                    return Results.Ok(game.ToSummaryDto());
                 }
                 else
                 {
@@ -50,22 +60,29 @@ namespace Proyecto.Endpoints
 
             }).WithName(GetGameEndpointName);
 
-            group.MapPost("/", (CreateGameDTO newGame) =>
+            group.MapPost("/", async (CreateGameDTO newGame,  GameStoreContext dbContext) =>
             {
-                GameDTO game = new GameDTO(Games.Count + 1, newGame.Name, newGame.Genre, newGame.Price, newGame.ReleaseDate);
-                Games.Add(game);
+                
+                GameEntity game = newGame.ToEntity();
+               
 
-                return Results.CreatedAtRoute(GetGameEndpointName, new { id = game.Id }, game);
+                dbContext.Games.Add(game);
+                await dbContext.SaveChangesAsync();
+                
+                return Results.CreatedAtRoute(GetGameEndpointName, new { id = game.Id }, game.ToDetailsDto());
             }).WithParameterValidation();
 
-            group.MapPut("/{id}", (int id, UpdateGameDTO updatedGame) =>
+            group.MapPut("/{id}", async (int id, UpdateGameDTO updatedGame, GameStoreContext dbContext) =>
             {
-                var index = Games.FindIndex(game => game.Id == id);
-                if (index != -1)
-                {
-                    Games[index] = new GameDTO(id, updatedGame.Name, updatedGame.Genre, updatedGame.Price, updatedGame.ReleaseDate);
+                var ExistingGame = await dbContext.Games.FindAsync(id);
 
+                if (ExistingGame != null)
+                {
+                    //.EntryLocaliza el juego,.CurrentValues son los valores actuales en la base y con setvalues los reemplaza por el juegoactualizado y lo transforma de DTO a Entidad
+                    dbContext.Entry(ExistingGame).CurrentValues.SetValues(updatedGame.toEntity(id));
+                    await dbContext.SaveChangesAsync();
                     return Results.NoContent();
+
                 }
                 else
                 {
@@ -74,9 +91,16 @@ namespace Proyecto.Endpoints
 
             }).WithParameterValidation();
 
-            group.MapDelete("/games/{id}", (int id) =>
+            group.MapDelete("/{id}", async (int id, GameStoreContext dbContext) =>
             {
-                Games.RemoveAll(game => game.Id == id);
+                GameEntity? game = await dbContext.Games.FindAsync(id);
+                if(game != null)
+                {
+                    dbContext.Games.Remove(game);
+                }
+                //batch delete(forma eficiente de hacerlo) dbContext.Games.Where(game => games.Id == id).ExecuteDelete();
+
+                await dbContext.SaveChangesAsync();
                 return Results.NoContent();
             });
 
