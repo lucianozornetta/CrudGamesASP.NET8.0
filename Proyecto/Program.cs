@@ -15,5 +15,5 @@ builder.Services.AddDbContext<GameStoreContext>(options =>
 
 var app = builder.Build();
 app.MapGamesEndpoints();
-app.MigrateDB();
+await app.MigrateDB();
 app.Run();
