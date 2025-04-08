@@ -36,7 +36,7 @@ namespace Proyecto.Mapping
             return new(
                 gameEntity.Id,
                 gameEntity.Name,
-                gameEntity.Genre!.Id,
+                gameEntity.GenreId,
                 gameEntity.Price,
                 gameEntity.ReleaseDate
                 );
